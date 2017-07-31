@@ -72,7 +72,7 @@ namespace Cloudflare_Bypass
             if (_request != null)
             {
                 httpRequest.AllowAutoRedirect = AutoRedirect;
-                httpRequest.CookieContainer = CookieContainer;
+                httpRequest.CookieContainer = CookieContainer; // Force la création du CookieContainer pour obtenir les cookies dans la réponse
                 httpRequest.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
 
                 Setup?.Invoke(httpRequest);
@@ -83,6 +83,7 @@ namespace Cloudflare_Bypass
 
         protected override WebResponse GetWebResponse(WebRequest request, IAsyncResult result)
         {
+            //Force l'UserAgent dans la requête si il n'est pas défini pour que Cloudflare accepte la requête
             if (request.Headers[HttpRequestHeader.UserAgent] == null)
                 (request as HttpWebRequest).UserAgent = "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:54.0) Gecko/20100101 Firefox/54.0";
 
@@ -95,6 +96,7 @@ namespace Cloudflare_Bypass
                 _response = ex.Response;
                 HttpWebResponse error = (HttpWebResponse)_response;
 
+                //Si l'exeption est du à l'erreur 503 de cloudflare
                 if (CF_Interpreter.IsCloudflare(error))
                     _response = BypassCloudflare((HttpWebRequest)request, error);
                 else
@@ -106,6 +108,7 @@ namespace Cloudflare_Bypass
 
         protected override WebResponse GetWebResponse(WebRequest request)
         {
+            //Force l'UserAgent dans la requête si il n'est pas défini pour que Cloudflare accepte la requête
             if (request.Headers[HttpRequestHeader.UserAgent] == null)
                 (request as HttpWebRequest).UserAgent = "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:54.0) Gecko/20100101 Firefox/54.0";
 
@@ -117,6 +120,8 @@ namespace Cloudflare_Bypass
             {
                 _response = ex.Response;
                 HttpWebResponse error = (HttpWebResponse)_response;
+
+                //Si l'exeption est du à l'erreur 503 de cloudflare
                 if (CF_Interpreter.IsCloudflare(error))
                     _response = BypassCloudflare((HttpWebRequest)request, error);
                 else
@@ -128,16 +133,20 @@ namespace Cloudflare_Bypass
 
         private WebResponse BypassCloudflare(HttpWebRequest request, HttpWebResponse response)
         {
+            //Récupère le contenu de la page Clouflare
             string html = "";
             using (var reader = new StreamReader(response.GetResponseStream()))
             {
                 html = reader.ReadToEnd();
             }
 
+            //Interprète le code native de cloudflare et nous retourne l'url de clearance
             string newurl = CF_Interpreter.Interpret(response.ResponseUri.AbsoluteUri, html);
 
+            //Attendre 3 secondes minimum pour que cloudflare accepte l'url de clearrance
             Thread.Sleep(3000);
 
+            //Récupère le cookies de clearance et redirige sur la page souhaité initialement avec l'autoredirection
             HttpWebRequest newWebRequest = (HttpWebRequest)WebRequest.Create(newurl);
             newWebRequest.AllowAutoRedirect = true;
             newWebRequest.CookieContainer = CookieContainer;
